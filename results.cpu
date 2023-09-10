@@ -40,3 +40,9 @@ Vulnerability Spectre v2:           Mitigation; Retpolines, IBPB conditional, IB
 Vulnerability Srbds:                Not affected
 Vulnerability Tsx async abort:      Not affected
 
+# aarch64
+machdep.cpu.cores_per_package: 10
+machdep.cpu.core_count: 10
+machdep.cpu.logical_per_package: 10
+machdep.cpu.thread_count: 10
+machdep.cpu.brand_string: Apple M1 Max
