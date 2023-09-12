@@ -94,8 +94,8 @@ pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:
 
                 std.debug.assert(@intFromPtr(&p[i]) % block_len == 0);
                 while (true) {
-                    const block: Block = p[i..][0..block_len].*;
-                    const matches = block == mask;
+                    const block: *const Block = @ptrCast(@alignCast(p[i..][0..block_len]));
+                    const matches = block.* == mask;
                     if (@reduce(.Or, matches)) {
                         return i + std.simd.firstTrue(matches).?;
                     }
