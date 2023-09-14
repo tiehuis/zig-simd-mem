@@ -28,19 +28,20 @@ pub fn main() anyerror!void {
             std.debug.print("{}\n", .{i});
         }
 
-        const end = random.uintLessThan(usize, memory_size);
+        const beg = random.uintLessThan(usize, memory_size);
+        const end = beg + random.uintLessThan(usize, memory_size - beg);
         memory[end] = 0;
 
         timer.reset();
-        const c_end = strlen(@ptrCast(memory.ptr));
+        const c_end = strlen(@ptrCast(memory.ptr + beg));
         c_time += timer.read();
 
         timer.reset();
-        const z_end = indexOfSentinel(u8, 0, @ptrCast(memory.ptr));
+        const z_end = indexOfSentinel(u8, 0, @ptrCast(memory.ptr + beg));
         z_time += timer.read();
 
         if (c_end != z_end) {
-            std.debug.print("! end={}, c={}, zig={}\n", .{ end, c_end, z_end });
+            std.debug.print("! p={x}, end={}, c={}, zig={}\n", .{ @intFromPtr(&memory[beg]), end, c_end, z_end });
             return error.DidNotMatch;
         }
 

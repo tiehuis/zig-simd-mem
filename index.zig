@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn vectorized_indexOfScalarPos(comptime T: type, slice: []const T, start_index: usize, value: T) ?usize {
     var i: usize = start_index;
 
-    if ((@typeInfo(T) == .Int or @typeInfo(T) == .Float) and std.math.isPowerOfTwo(@bitSizeOf(T))) {
+    if (!@inComptime() and (@typeInfo(T) == .Int or @typeInfo(T) == .Float) and std.math.isPowerOfTwo(@bitSizeOf(T))) {
         if (comptime std.simd.suggestVectorSize(T)) |block_len| {
             // For Intel Nehalem (2009) and AMD Bulldozer (2012) or later, unaligned loads on aligned data result
             // in the same execution as aligned loads. We ignore older arch's here and don't bother pre-aligning.
@@ -60,7 +60,7 @@ pub fn vectorized_indexOfScalarPos(comptime T: type, slice: []const T, start_ind
 pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:sentinel]const T) usize {
     var i: usize = 0;
 
-    if ((@typeInfo(T) == .Int or @typeInfo(T) == .Float) and std.math.isPowerOfTwo(@bitSizeOf(T))) {
+    if (!@inComptime() and (@typeInfo(T) == .Int or @typeInfo(T) == .Float) and std.math.isPowerOfTwo(@bitSizeOf(T))) {
         switch (@import("builtin").cpu.arch) {
             // The below branch assumes that reading past the end of the buffer is valid, as long
             // as we don't read into a new page. This should be the case for most architectures
@@ -71,7 +71,8 @@ pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:
                 const mask: Block = @splat(sentinel);
 
                 // First block may be unaligned
-                const offset_in_page = @intFromPtr(&p[i]) & (std.mem.page_size - 1);
+                const start_addr = @intFromPtr(&p[i]);
+                const offset_in_page = start_addr & (std.mem.page_size - 1);
                 if (offset_in_page < std.mem.page_size - block_len) {
                     // Will not read past the end of a page, full block.
                     const block: Block = p[i..][0..block_len].*;
@@ -79,8 +80,8 @@ pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:
                     if (@reduce(.Or, matches)) {
                         return i + std.simd.firstTrue(matches).?;
                     }
-                    const block_mask = -@as(i32, @intCast(block_len));
-                    i = (i + block_len) & @as(u32, @bitCast(block_mask));
+
+                    i += std.mem.alignForward(usize, start_addr, block_len) - start_addr;
                 } else {
                     // Would read over a page boundary. Per-byte at a time until aligned or found.
                     // 0.39% chance this branch is taken for 4K pages at 16b block length.
@@ -92,7 +93,7 @@ pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:
                     }
                 }
 
-                std.debug.assert(@intFromPtr(&p[i]) % block_len == 0);
+                std.debug.assert(std.mem.isAligned(@intFromPtr(&p[i]), block_len));
                 while (true) {
                     const block: *const Block = @ptrCast(@alignCast(p[i..][0..block_len]));
                     const matches = block.* == mask;
