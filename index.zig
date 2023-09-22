@@ -81,19 +81,19 @@ pub fn vectorized_indexOfSentinel(comptime T: type, comptime sentinel: T, p: [*:
                         return i + std.simd.firstTrue(matches).?;
                     }
 
-                    i += std.mem.alignForward(usize, start_addr, block_len) - start_addr;
+                    i += (std.mem.alignForward(usize, start_addr, @alignOf(Block)) - start_addr) / @sizeOf(T);
                 } else {
                     // Would read over a page boundary. Per-byte at a time until aligned or found.
                     // 0.39% chance this branch is taken for 4K pages at 16b block length.
                     //
                     // An alternate strategy is to do read a full block (the last in the page) and
                     // mask the entries before the pointer.
-                    while ((@intFromPtr(&p[i]) & (block_len - 1)) != 0) : (i += 1) {
+                    while ((@intFromPtr(&p[i]) & (@alignOf(Block) - 1)) != 0) : (i += 1) {
                         if (p[i] == sentinel) return i;
                     }
                 }
 
-                std.debug.assert(std.mem.isAligned(@intFromPtr(&p[i]), block_len));
+                std.debug.assert(std.mem.isAligned(@intFromPtr(&p[i]), @alignOf(Block)));
                 while (true) {
                     const block: *const Block = @ptrCast(@alignCast(p[i..][0..block_len]));
                     const matches = block.* == mask;
