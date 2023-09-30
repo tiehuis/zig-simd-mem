@@ -143,3 +143,57 @@ export fn _vectorized_indexOfSentinel(p: [*:0]const Ty) usize {
 export fn _vectorized_indexOfScalarPos(p: [*]const Ty, len: usize, value: Ty) usize {
     return vectorized_indexOfScalarPos(Ty, p[0..len], 0, value).?;
 }
+
+const testing = std.testing;
+const indexOfSentinel = vectorized_indexOfSentinel;
+
+test "indexOfSentinel vector paths" {
+    const Types = [_]type{ u8, u16, u32, u64 };
+    const allocator = std.testing.allocator;
+
+    inline for (Types) |T| {
+        const block_len = comptime std.simd.suggestVectorSize(T) orelse continue;
+
+        // Allocate three pages so we guarantee a page-crossing address with a full page after
+        const memory = try allocator.alloc(T, 3 * std.mem.page_size / @sizeOf(T));
+        defer allocator.free(memory);
+        @memset(memory, 0xaa);
+
+        // Find starting page-alignment = 0
+        var start: usize = 0;
+        const start_addr = @intFromPtr(&memory);
+        start += (std.mem.alignForward(usize, start_addr, std.mem.page_size) - start_addr) / @sizeOf(T);
+        try testing.expect(start < std.mem.page_size / @sizeOf(T));
+
+        // Validate all sub-block alignments
+        const search_len = std.mem.page_size / @sizeOf(T);
+        memory[start + search_len] = 0;
+        for (0..block_len) |offset| {
+            try testing.expectEqual(search_len - offset, indexOfSentinel(T, 0, @ptrCast(&memory[start + offset])));
+        }
+        memory[start + search_len] = 0xaa;
+
+        // Validate page boundary crossing
+        const start_page_boundary = start + (std.mem.page_size / @sizeOf(T));
+        memory[start_page_boundary + block_len] = 0;
+        for (0..block_len) |offset| {
+            try testing.expectEqual(2 * block_len - offset, indexOfSentinel(T, 0, @ptrCast(&memory[start_page_boundary - block_len + offset])));
+        }
+    }
+}
+
+const indexOfScalarPos = vectorized_indexOfScalarPos;
+
+test "indexOfScalarPos" {
+    const Types = [_]type{ u8, u16, u32, u64 };
+
+    inline for (Types) |T| {
+        var memory: [64 / @sizeOf(T)]T = undefined;
+        @memset(&memory, 0xaa);
+        memory[memory.len - 1] = 0;
+
+        for (0..memory.len) |i| {
+            try testing.expectEqual(memory.len - i - 1, indexOfScalarPos(T, memory[i..], 0, 0).?);
+        }
+    }
+}
